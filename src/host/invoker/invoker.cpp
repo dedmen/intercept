@@ -33,11 +33,16 @@ namespace intercept {
             _attached = true;
             controller::get().add("init_invoker", std::bind(&intercept::invoker::init_invoker, this, std::placeholders::_1, std::placeholders::_2));
             controller::get().add("test_invoker", std::bind(&intercept::invoker::test_invoker, this, std::placeholders::_1, std::placeholders::_2));
-            controller::get().add("do_invoke_period", std::bind(&intercept::invoker::do_invoke_period, this, std::placeholders::_1, std::placeholders::_2));
+            controller::get().add("do_invoke_period", [](const arguments & args_, std::string & result_) {
+                return false; //#deprecate
+            });
             controller::get().add("invoker_begin_register", std::bind(&intercept::invoker::invoker_begin_register, this, std::placeholders::_1, std::placeholders::_2));
             controller::get().add("invoker_register", std::bind(&intercept::invoker::invoker_register, this, std::placeholders::_1, std::placeholders::_2));
             controller::get().add("invoker_end_register", std::bind(&intercept::invoker::invoker_end_register, this, std::placeholders::_1, std::placeholders::_2));
-            controller::get().add("rv_event", std::bind(&intercept::invoker::rv_event, this, std::placeholders::_1, std::placeholders::_2));
+            controller::get().add("rv_event", [](const arguments & args_, std::string & result_)
+            {
+                return false; //#deprecate
+            });
             controller::get().add("signal", std::bind(&intercept::invoker::signal, this, std::placeholders::_1, std::placeholders::_2));
             eventhandlers::get().initialize();
         }
@@ -68,15 +73,22 @@ namespace intercept {
         else {
             LOG(INFO) << "Registration function failed to unhook.";
         }
+        sqf_functions::get().initialize();
+        _intercept_event_function = sqf_functions::get().registerFunction("interceptEvent", "", userFunctionWrapper<_intercept_event>, types::__internal::GameDataType::BOOL, types::__internal::GameDataType::STRING, types::__internal::GameDataType::ARRAY);
+        _intercept_do_invoke_period_function = sqf_functions::get().registerFunction("interceptOnFrame", "", userFunctionWrapper<_intercept_do_invoke_period>, types::__internal::GameDataType::BOOL, types::__internal::GameDataType::ARRAY);
+
         return true;
     }
 
-    bool invoker::do_invoke_period(const arguments & args_, std::string & result_)
-    {
+    game_value invoker::_intercept_do_invoke_period(game_value right_arg_) {
+        return invoker::get().do_invoke_period();
+    }
+
+    bool invoker::do_invoke_period() {
         {
             _invoker_unlock period_lock(this, true);
             long timeout = clock() + 3;
-            while (_thread_count > 0 && clock() < timeout) continue;
+            while (_thread_count > 0 && clock() < timeout) std::this_thread::sleep_for(std::chrono::microseconds(20));
         }
         {
             _invoker_unlock on_frame_lock(this);
@@ -87,45 +99,48 @@ namespace intercept {
                 }
             }
         }
-        {
-            std::lock_guard<std::mutex> delete_lock(_delete_mutex);
-            if (_to_delete.size() > 500) {
-                //for (uint32_t index = 0; index < 100; ++index) {
-                uint32_t index = 0;
-                while(_to_delete.size() > 0) {
-                    ((rv_game_value *)_delete_array_ptr[index])->__vptr = rv_game_value::__vptr_def;
-                    ((rv_game_value *)_delete_array_ptr[index])->data = _to_delete.front();
-                    index++;
-                    if (index >= 1000) {
-                        _invoker_unlock delete_invoke_lock(this);
-                        invoke_delete();
-                        index = 0;
-                    }
-                    _to_delete.pop();
-                }
-                _invoker_unlock delete_invoke_lock(this);
-                invoke_delete();
-            }
-        }
+        //{       //#Deprecate 
+        //#TODO remove
+        //    std::lock_guard<std::mutex> delete_lock(_delete_mutex);
+        //    if (_to_delete.size() > 500) {
+        //        //for (uint32_t index = 0; index < 100; ++index) {
+        //        uint32_t index = 0;
+        //        while(_to_delete.size() > 0) {
+        //            //((game_value *)_delete_array_ptr[index])->set_vtable(game_value::__vptr_def);
+        //            //((game_value *)_delete_array_ptr[index])->data = _to_delete.front();
+        //            index++;
+        //            if (index >= 1000) {
+        //                _invoker_unlock delete_invoke_lock(this);
+        //                invoke_delete();
+        //                index = 0;
+        //            }
+        //            _to_delete.pop();
+        //        }
+        //        _invoker_unlock delete_invoke_lock(this);
+        //        invoke_delete();
+        //    }
+        //}
         return true;
     }
 
-    bool invoker::rv_event(const arguments & args_, std::string & result_)
-    {
-        std::string event_name = args_.as_string(0);
-        LOG(DEBUG) << "EH " << event_name << " START";
-        auto handler = _eventhandlers.find(event_name);
+    game_value invoker::_intercept_event(game_value left_arg_, game_value right_arg_) {
+        return invoker::get().rv_event(left_arg_, right_arg_);
+    }
+
+    bool invoker::rv_event(const std::string& event_name_, game_value& params_) {
+        LOG(DEBUG) << "EH " << event_name_ << " START";
+        auto handler = _eventhandlers.find(event_name_);
         if (handler != _eventhandlers.end()) {
             bool all = false;
             // If we are stopping a mission it is assumed that threads will be
             // stopped and joined here. Deadlocks can occur if we do not open up
             // the invoker to all threads.
-            if (event_name == "mission_stopped")
+            if (event_name_ == "mission_stopped")
                 all = true;
             _invoker_unlock eh_lock(this, all);
             //game_value params = invoke_raw_nolock(_get_variable_func, &_mission_namespace, &var_name);
-            handler->second(event_name, _eh_params[0]);
-            LOG(DEBUG) << "EH " << event_name << " END";
+            handler->second(event_name_, params_);
+            LOG(DEBUG) << "EH " << event_name_ << " END";
             return true;
         }
         return false;
@@ -197,115 +212,86 @@ namespace intercept {
         }
     }
 
-    rv_game_value invoker::invoke_raw_nolock(nular_function function_)
+    game_value invoker::invoke_raw_nolock(nular_function function_)
     {
         uintptr_t ret_ptr = function_(invoker::sqf_this, invoker::sqf_game_state);
-        rv_game_value ret;
-        ret.__vptr = *(uintptr_t *)ret_ptr;
-        ret.data = (game_data *)*(uintptr_t *)(ret_ptr + 4);
-        if (ret.data) {
-            ret.data->ref_count_internal.set_initial((uint16_t)ret.data->ref_count_internal, false);
-            ret.data->ref_count_internal = (uint16_t)ret.data->ref_count_internal - 1;
-        }
-        return ret;
+        return game_value(std::move(*reinterpret_cast<game_value*>(ret_ptr)));
     }
 
-    rv_game_value invoker::invoke_raw(const std::string &function_name_)
-    {
+    game_value invoker::invoke_raw(const std::string &function_name_) const {
         nular_function function;
         if (loader::get().get_function(function_name_, function)) {
             return invoke_raw_nolock(function);
         }
-        return rv_game_value();
+        return game_value();
     }
 
-    rv_game_value invoker::invoke_raw_nolock(unary_function function_, const game_value &right_arg_)
-    {
-        uintptr_t ret_ptr = function_(invoker::sqf_this, invoker::sqf_game_state, (uintptr_t)&right_arg_);
-        rv_game_value ret;
-        ret.__vptr = *(uintptr_t *)ret_ptr;
-        ret.data = (game_data *)*(uintptr_t *)(ret_ptr + 4);
-        if (ret.data) {
-            ret.data->ref_count_internal.set_initial((uint16_t)ret.data->ref_count_internal, false);
-            ret.data->ref_count_internal = (uint16_t)ret.data->ref_count_internal - 1;
-        }
-        return ret;
+    game_value invoker::invoke_raw_nolock(unary_function function_, const game_value &right_arg_) {
+        uintptr_t ret_ptr = function_(invoker::sqf_this, invoker::sqf_game_state, reinterpret_cast<uintptr_t>(&right_arg_));
+        return game_value(std::move(*reinterpret_cast<game_value*>(ret_ptr)));
     }
 
-    rv_game_value invoker::invoke_raw(const std::string &function_name_, const game_value &right_, const std::string &right_type_)
-    {
+    game_value invoker::invoke_raw(const std::string &function_name_, const game_value &right_, const std::string &right_type_) const {
         unary_function function;
         if (loader::get().get_function(function_name_, function, right_type_)) {
             return invoke_raw_nolock(function, right_);
         }
-        return rv_game_value();
+        return game_value();
     }
 
-    rv_game_value invoker::invoke_raw(const std::string &function_name_, const game_value &right_)
-    {
+    game_value invoker::invoke_raw(const std::string &function_name_, const game_value &right_) const {
         unary_function function;
         if (loader::get().get_function(function_name_, function)) {
             return invoke_raw_nolock(function, right_);
         }
-        return rv_game_value();
+        return game_value();
     }
 
 
-    rv_game_value invoker::invoke_raw_nolock(binary_function function_, const game_value &left_arg_, const game_value &right_arg_)
+    game_value invoker::invoke_raw_nolock(binary_function function_, const game_value &left_arg_, const game_value &right_arg_)
     {
-        uintptr_t ret_ptr = function_(invoker::sqf_this, invoker::sqf_game_state, (uintptr_t)&left_arg_, (uintptr_t)&right_arg_);
-        rv_game_value ret;
-        ret.__vptr = *(uintptr_t *)ret_ptr;
-        ret.data = (game_data *)*(uintptr_t *)(ret_ptr + 4);
-        if (ret.data) {
-            ret.data->ref_count_internal.set_initial((uint16_t)ret.data->ref_count_internal, false);
-            ret.data->ref_count_internal = (uint16_t)ret.data->ref_count_internal - 1;
-        }
-        return ret;
+        uintptr_t ret_ptr = function_(invoker::sqf_this, invoker::sqf_game_state, reinterpret_cast<uintptr_t>(&left_arg_), reinterpret_cast<uintptr_t>(&right_arg_));
+        return game_value(std::move(*reinterpret_cast<game_value*>(ret_ptr)));
     }
 
-    rv_game_value invoker::invoke_raw(const std::string &function_name_, const game_value &left_, const game_value &right_)
-    {
+    game_value invoker::invoke_raw(const std::string &function_name_, const game_value &left_, const game_value &right_) const {
         binary_function function;
         if (loader::get().get_function(function_name_, function)) {
             return invoke_raw_nolock(function, left_, right_);
         }
-        return rv_game_value();
+        return game_value();
     }
 
-    rv_game_value invoker::invoke_raw(const std::string &function_name_, const game_value &left_, const std::string &left_type_, const game_value &right_, const std::string &right_type_)
-    {
+    game_value invoker::invoke_raw(const std::string &function_name_, const game_value &left_, const std::string &left_type_, const game_value &right_, const std::string &right_type_) const {
         binary_function function;
         if (loader::get().get_function(function_name_, function, left_type_, right_type_)) {
             return invoke_raw_nolock(function, left_, right_);
         }
-        return rv_game_value();
+        return game_value();
     }
 
-    value_type invoker::get_type(const game_value &value_) const
-    {
+    value_type invoker::get_type(const game_value &value_) {
         return value_.type();
     }
 
-    const std::string invoker::get_type_str(const game_value &value_) const
+    const std::string& invoker::get_type_str(const game_value &value_) const
     {
         auto type = value_.type();
         return type_map.at(type);
     }
 
-    bool invoker::release_value(game_value &value_, bool immediate_) {
+    bool invoker::release_value(game_value &value_, bool immediate_) {      //#Deprecate
         if (!value_.client_owned()) {
             std::lock_guard<std::mutex> delete_lock(_delete_mutex);
-            value_.rv_data.data->ref_count_internal++;
-            _to_delete.push(value_.rv_data.data);
+            _to_delete.push(value_.data);
             return true;
         }
         return false;
     }
 
-
     int invoker::_register_hook(char *sqf_this_, uintptr_t sqf_game_state_, uintptr_t right_arg_)
     {
+        //#deprecate in favor of registerFunction
         LOG(INFO) << "Registration Hook Function Called: " << invoker::get()._registration_type;
         auto step = invoker::get()._registration_type;
         invoker::get()._sqf_game_state = sqf_game_state_;
@@ -315,9 +301,9 @@ namespace intercept {
 
         std::pair<value_type, value_type> gv_structure;
 
-        rv_game_value::__vptr_def = *(uintptr_t *)right_arg_;
-        gv_structure.first = rv_game_value::__vptr_def;
-        gv_structure.second = rv_game_value::__vptr_def;
+        game_value::__vptr_def = *(uintptr_t *)right_arg_;
+        gv_structure.first = game_value::__vptr_def;
+        gv_structure.second = game_value::__vptr_def;
         invoker::get().type_structures["GV"] = gv_structure;
 
         std::pair<value_type, value_type> structure;
@@ -329,6 +315,7 @@ namespace intercept {
             invoker::get().type_structures["ARRAY"] = structure;
             game_data_array::type_def = structure.first;
             game_data_array::data_type_def = structure.second;
+            game_data_array::pool_alloc_base = loader::get().get_allocator()->_poolAllocs[static_cast<size_t>(types::__internal::GameDataType::ARRAY)];
             //invoker::get()._delete_array_ptr = game_value(right_arg_);
             
         }
@@ -337,18 +324,21 @@ namespace intercept {
             invoker::get().type_structures["SCALAR"] = structure;
             game_data_number::type_def = structure.first;
             game_data_number::data_type_def = structure.second;
+            game_data_number::pool_alloc_base = loader::get().get_allocator()->_poolAllocs[static_cast<size_t>(types::__internal::GameDataType::SCALAR)];
         }
         else if (step == "bool_type") {
             invoker::get().type_map[structure.first] = "BOOL";
             invoker::get().type_structures["BOOL"] = structure;
             game_data_bool::type_def = structure.first;
             game_data_bool::data_type_def = structure.second;
+            game_data_bool::pool_alloc_base = loader::get().get_allocator()->_poolAllocs[static_cast<size_t>(types::__internal::GameDataType::BOOL)];
         }
         else if (step == "string_type") {
             invoker::get().type_map[structure.first] = "STRING";
             invoker::get().type_structures["STRING"] = structure;
             game_data_string::type_def = structure.first;
             game_data_string::data_type_def = structure.second;
+            game_data_string::pool_alloc_base = loader::get().get_allocator()->_poolAllocs[static_cast<size_t>(types::__internal::GameDataType::STRING)];
         }
         else if (step == "code_type") {
             invoker::get().type_map[structure.first] = "CODE";

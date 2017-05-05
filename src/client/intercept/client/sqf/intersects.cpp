@@ -7,6 +7,7 @@ namespace intercept {
         namespace __helpers {
             intersect_surfaces_list __line_intersects_surfaces(const game_value& intersects_value_) {
                 intersect_surfaces_list output;
+                output.reserve(intersects_value_.length());
                 for (uint32_t i = 0; i < intersects_value_.length(); ++i) {
                     game_value element = intersects_value_[i];
                     intersect_surfaces surfaces; // Our intersecting surfaces
@@ -24,11 +25,17 @@ namespace intercept {
             }
         }
 
-        bool intersect(const vector3 &begin_pos_, const vector3 &end_pos_, const object& obj_, const std::string &lodname_) {
-            return game_value(host::functions.invoke_raw_binary(
-                client::__sqf::binary__intersect__array__array__ret__array,
+        bool intersect(const object& obj_, const std::string &lodname_, const vector3 &begin_pos_, const vector3 &end_pos_) {
+            std::vector<game_value> params1{
+                obj_,
+                lodname_
+            };
+            std::vector<game_value> params2{
                 begin_pos_,
-                end_pos_));
+                end_pos_
+            };
+
+            return game_value(host::functions.invoke_raw_binary(client::__sqf::binary__intersect__array__array__ret__array, params1, params2));
         }
 
         intersect_surfaces_list line_intersects_surfaces(const vector3 &begin_pos_asl_, const vector3 &end_pos_asl_) {
@@ -78,11 +85,11 @@ namespace intercept {
             });
             game_value intersects_value = host::functions.invoke_raw_unary(client::__sqf::unary__lineintersectswith__array__ret__array, array_input);
 
-            game_data_array* intersects = ((game_data_array *)intersects_value.rv_data.data);
+            game_data_array* intersects = static_cast<game_data_array*>(intersects_value.data.getRef());
 
             std::vector<object> output;
             for (uint32_t i = 0; i < intersects->length; ++i) {
-                output.push_back(object(intersects->data[i].rv_data));
+                output.push_back(object(intersects->data[i]));
             }
 
             return output;
@@ -98,11 +105,11 @@ namespace intercept {
             });
             game_value intersects_value = host::functions.invoke_raw_unary(client::__sqf::unary__lineintersectswith__array__ret__array, array_input);
 
-            game_data_array* intersects = ((game_data_array *)intersects_value.rv_data.data);
+            game_data_array* intersects = static_cast<game_data_array*>(intersects_value.data.getRef());
 
             std::vector<object> output;
             for (uint32_t i = 0; i < intersects->length; ++i) {
-                output.push_back(object(intersects->data[i].rv_data));
+                output.push_back(object(intersects->data[i]));
             }
 
             return output;
@@ -118,11 +125,11 @@ namespace intercept {
             });
             game_value intersects_value = host::functions.invoke_raw_unary(client::__sqf::unary__lineintersectswith__array__ret__array, array_input);
 
-            game_data_array* intersects = ((game_data_array *)intersects_value.rv_data.data);
+            game_data_array* intersects = static_cast<game_data_array*>(intersects_value.data.getRef());
 
             std::vector<object> output;
             for (uint32_t i = 0; i < intersects->length; ++i) {
-                output.push_back(object(intersects->data[i].rv_data));
+                output.push_back(object(intersects->data[i]));
             }
 
             return output;
@@ -185,11 +192,11 @@ namespace intercept {
             });
 
             game_value intersects_value = host::functions.invoke_raw_unary(client::__sqf::unary__lineintersectsobjs__array__ret__array, array_input);
-            game_data_array* intersects = ((game_data_array *)intersects_value.rv_data.data);
+            game_data_array* intersects = static_cast<game_data_array *>(intersects_value.data.getRef());
 
             std::vector<object> output;
             for (uint32_t i = 0; i < intersects->length; ++i) {
-                output.push_back(object(intersects->data[i].rv_data));
+                output.push_back(object(intersects->data[i]));
             }
             return output;
         }

@@ -18,6 +18,10 @@ https://github.com/NouberNou/intercept
 using namespace intercept::types;
 
 namespace intercept {
+    class registered_sqf_function;
+    using WrapperFunctionBinary = uintptr_t(*)(char*, uintptr_t, uintptr_t, uintptr_t);
+    using WrapperFunctionUnary = uintptr_t(*)(char*, uintptr_t, uintptr_t);
+
     extern "C" {
         struct client_functions {
             /*!
@@ -27,8 +31,8 @@ namespace intercept {
 
             @return rv_game_value The raw returned data from the function.
             */
-            rv_game_value(*invoke_raw_nular)(nular_function function_);
-            rv_game_value(*invoke_raw_nular_nolock)(nular_function function_);
+            game_value(*invoke_raw_nular)(nular_function function_);
+            game_value(*invoke_raw_nular_nolock)(nular_function function_);
 
             /*!
             @brief Invokes a raw unary SQF function from a unary function pointer.
@@ -38,8 +42,8 @@ namespace intercept {
 
             @return rv_game_value The raw returned data from the function.
             */
-            rv_game_value(*invoke_raw_unary)(unary_function function_, const game_value &right_arg_);
-            rv_game_value(*invoke_raw_unary_nolock)(unary_function function_, const game_value &right_arg_);
+            game_value(*invoke_raw_unary)(unary_function function_, const game_value &right_arg_);
+            game_value(*invoke_raw_unary_nolock)(unary_function function_, const game_value &right_arg_);
 
             /*!
             @brief Invokes a raw binary SQF function from a binary function pointer.
@@ -50,8 +54,8 @@ namespace intercept {
 
             @return rv_game_value The raw returned data from the function.
             */
-            rv_game_value(*invoke_raw_binary)(binary_function function_, const game_value &left_arg_, const game_value &right_arg_);
-            rv_game_value(*invoke_raw_binary_nolock)(binary_function function_, const game_value &left_arg_, const game_value &right_arg_);
+            game_value(*invoke_raw_binary)(binary_function function_, const game_value &left_arg_, const game_value &right_arg_);
+            game_value(*invoke_raw_binary_nolock)(binary_function function_, const game_value &left_arg_, const game_value &right_arg_);
 
             /*!
             @brief Returns type definitions for a given type string.
@@ -109,6 +113,20 @@ namespace intercept {
             void(*invoker_lock)();
             void(*invoker_unlock)();
 
+            /*!
+            @brief Get's a pointer to Arma's memory allocator
+
+            This returns a pointer to Arma's internal memory allocator for use by rv_allocator
+
+            @param value_ A pointer to the allocator
+            */
+            const types::__internal::allocatorInfo*(*get_engine_allocator)();
+
+            /*!
+            @brief Registers SQF Function
+            */
+            types::registered_sqf_function(*register_sqf_function)(std::string name, std::string description, WrapperFunctionBinary function_, types::__internal::GameDataType return_arg_type, types::__internal::GameDataType left_arg_type, types::__internal::GameDataType right_arg_type);
+            types::registered_sqf_function(*register_sqf_function_unary)(std::string name, std::string description, WrapperFunctionUnary function_, types::__internal::GameDataType return_arg_type, types::__internal::GameDataType right_arg_type);
         };
     }
 }

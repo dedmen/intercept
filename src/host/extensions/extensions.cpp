@@ -20,6 +20,9 @@ namespace intercept {
         functions.invoke_raw_unary = client_function_defs::invoke_raw_unary_nolock;
         functions.invoker_lock = client_function_defs::invoker_lock;
         functions.invoker_unlock = client_function_defs::invoker_unlock;
+        functions.get_engine_allocator = client_function_defs::get_engine_allocator;
+        functions.register_sqf_function = client_function_defs::register_sqf_function;
+        functions.register_sqf_function_unary = client_function_defs::register_sqf_function_unary;
         for (auto file : _searcher.active_pbo_list()) {
             size_t last_index = file.find_last_of("\\/");
             std::string path = file.substr(0, last_index);
@@ -148,6 +151,7 @@ namespace intercept {
         //new_module.functions.on_signal = (module::on_signal_func)GetProcAddress(dllHandle, "on_signal");
         new_module.functions.post_init = (module::post_init_func)GetProcAddress(dllHandle, "post_init");
         new_module.functions.pre_init = (module::pre_init_func)GetProcAddress(dllHandle, "pre_init");
+        new_module.functions.pre_start = (module::pre_start_func)GetProcAddress(dllHandle, "pre_start");
         new_module.functions.mission_stopped = (module::mission_stopped_func)GetProcAddress(dllHandle, "mission_stopped");
 
 #define EH_PROC_DEF(x) new_module.eventhandlers.x = (module::x##_func)GetProcAddress(dllHandle, #x)

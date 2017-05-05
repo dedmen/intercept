@@ -17,6 +17,7 @@ https://github.com/NouberNou/intercept
 #include <condition_variable>
 #include <queue>
 #include "eventhandlers.hpp"
+#include "sqf_functions.hpp"
 
 
 using namespace intercept::types;
@@ -65,8 +66,8 @@ namespace intercept {
         return type, or passed to a complex argument constructor such as `object`
         or `group`, etc.
         */
-        rv_game_value invoke_raw_nolock(const nular_function function_);
-        rv_game_value invoke_raw(const std::string &function_name_);
+        static game_value invoke_raw_nolock(const nular_function function_);
+        game_value invoke_raw(const std::string &function_name_) const;
         //!@}
 
         /*!@{
@@ -80,9 +81,9 @@ namespace intercept {
         return type, or passed to a complex argument constructor such as `object`
         or `group`, etc.
         */
-        rv_game_value invoke_raw_nolock(const unary_function function_, const game_value &right_);
-        rv_game_value invoke_raw(const std::string &function_name_, const game_value &right_);
-        rv_game_value invoke_raw(const std::string &function_name_, const game_value &right_, const std::string &right_type_);
+        static game_value invoke_raw_nolock(const unary_function function_, const game_value &right_);
+        game_value invoke_raw(const std::string &function_name_, const game_value &right_) const;
+        game_value invoke_raw(const std::string &function_name_, const game_value &right_, const std::string &right_type_) const;
         //!@}
 
         /*!@{
@@ -96,9 +97,9 @@ namespace intercept {
         return type, or passed to a complex argument constructor such as `object`
         or `group`, etc.
         */
-        rv_game_value invoke_raw_nolock(const binary_function function_, const game_value &left_, const game_value &right_);
-        rv_game_value invoke_raw(const std::string &function_name_, const game_value &left_, const game_value &right_);
-        rv_game_value invoke_raw(const std::string &function_name_, const game_value &left_, const std::string &left_type_, const game_value &right_, const std::string &right_type_);
+        static game_value invoke_raw_nolock(const binary_function function_, const game_value &left_, const game_value &right_);
+        game_value invoke_raw(const std::string &function_name_, const game_value &left_, const game_value &right_) const;
+        game_value invoke_raw(const std::string &function_name_, const game_value &left_, const std::string &left_type_, const game_value &right_, const std::string &right_type_) const;
         //!@}
         //!@}
 
@@ -110,13 +111,13 @@ namespace intercept {
         @brief Returns the numerical type id. This is the vtable ptr of the data
         type.
         */
-        uintptr_t get_type(const game_value &value_) const;
+        static uintptr_t get_type(const game_value &value_);
 
         /*!
         @brief Returns the string representation of the data type. IE: "ARRAY",
         "STRING", "SCALAR", etc.
         */
-        const std::string get_type_str(const game_value &value_) const;
+        const std::string& get_type_str(const game_value &value_) const;
         //!@}
 
         /*!
@@ -204,12 +205,12 @@ namespace intercept {
         function call that each client plugin can define for guaranteed per-frame
         execution.
         */
-        bool do_invoke_period(const arguments & args_, std::string & result_);
+        bool do_invoke_period();
 
         /*!
         @brief Consume an event from the RV Engine and dispatches it.
         */
-        bool rv_event(const arguments & args_, std::string & result_);
+        bool rv_event(const std::string& event_name_, game_value& params_);
         
         /*!
         @brief Get signal from sqf code dispatch it.
@@ -255,6 +256,14 @@ namespace intercept {
 
 
         std::atomic<uint32_t> _thread_count;
+
+        /*!
+        @brief The interceptEvent SQF Function that's used to get events with arguments
+        */
+        static game_value _intercept_event(game_value left_arg_, game_value right_arg_);
+        registered_sqf_function _intercept_event_function;
+        static game_value _intercept_do_invoke_period(game_value right_arg_);
+        registered_sqf_function _intercept_do_invoke_period_function;
 
         /*!
         @brief The hook function for getting type information. Hooked via intercept::invoker_begin_register.
